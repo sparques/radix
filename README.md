@@ -92,3 +92,21 @@ mono := radix.ComplexToMonoFloat32(samples)
 
 _, _ = iq, mono
 ```
+
+For receive-side plumbing, callers can read little-endian complex64 streams and
+run aligned OFDM analysis when timing and mode are already known:
+
+```go
+frames, err := radix.AnalyzeComplexAlignedFrom(reader, radix.AlignedDecoderConfig{
+	Audio: radix.AudioConfig{
+		SampleRate:      48000,
+		FrequencyOffset: 1500,
+	},
+	Mode: mode,
+})
+if err != nil {
+	panic(err)
+}
+
+_ = frames
+```

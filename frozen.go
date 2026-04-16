@@ -2,6 +2,9 @@ package radix
 
 import "fmt"
 
+// FrozenPayloadBits returns the frozen-bit table used by the payload polar
+// code. Frozen bits are positions reserved by the error-correction code rather
+// than carrying your data.
 func FrozenPayloadBits(codeOrder int, rate CodeRate) ([]uint32, error) {
 	if codeOrder < 11 || codeOrder > 16 {
 		return nil, fmt.Errorf("unsupported code order %d", codeOrder)
@@ -75,6 +78,8 @@ func FrozenPayloadBits(codeOrder int, rate CodeRate) ([]uint32, error) {
 	return nil, fmt.Errorf("unsupported payload frozen table for order %d rate %s", codeOrder, rate)
 }
 
+// PayloadMessageBits returns the number of information bits carried before
+// polar encoding, including the 32 payload CRC bits.
 func PayloadMessageBits(codeOrder int, rate CodeRate) (int, error) {
 	dataBits, err := dataBits(codeOrder, rate)
 	if err != nil {

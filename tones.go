@@ -5,8 +5,13 @@ import (
 	"math/cmplx"
 )
 
+// ToneFrames is a decoded or pre-encoded group of OFDM symbols.
+// The first index is the symbol number; the second index is the active tone
+// number inside that symbol.
 type ToneFrames [][]complex128
 
+// BuildToneFrames maps encoded metadata and payload symbols onto OFDM tones.
+// It inserts known seed tones that the receiver later uses for correction.
 func BuildToneFrames(cfg Config, metadata []int8, payload []int8) (ToneFrames, error) {
 	if len(metadata) != MetadataCodeBits {
 		return nil, fmt.Errorf("metadata has %d symbols, want %d", len(metadata), MetadataCodeBits)
@@ -59,6 +64,9 @@ func BuildToneFrames(cfg Config, metadata []int8, payload []int8) (ToneFrames, e
 	return frames, nil
 }
 
+// DecodeToneFrames demaps OFDM tones back into signed metadata and payload
+// symbols. It performs hard decisions only and assumes any equalization has
+// already been done.
 func DecodeToneFrames(cfg Config, frames ToneFrames) ([]int8, []int8, error) {
 	plan, err := BuildTonePlan(cfg)
 	if err != nil {
@@ -107,6 +115,9 @@ func DecodeToneFrames(cfg Config, frames ToneFrames) ([]int8, []int8, error) {
 	return metadata, payload, nil
 }
 
+// EqualizeToneFrames uses known seed tones to correct per-tone gain and phase.
+// This is the receiver's basic "make the constellation points line up again"
+// step before hard demapping.
 func EqualizeToneFrames(cfg Config, frames ToneFrames) (ToneFrames, error) {
 	plan, err := BuildTonePlan(cfg)
 	if err != nil {
@@ -182,6 +193,9 @@ func circularToneDistance(a, b int) int {
 	return d
 }
 
+// DecodeAligned decodes samples that already start at the beginning of a Radix
+// transmission. For arbitrary recordings with leading silence/noise, use
+// DecodeCaptured instead.
 func DecodeAligned(cfg AlignedDecoderConfig, samples []complex64) (Metadata, []byte, error) {
 	frames, err := AnalyzeComplexAligned(cfg, samples)
 	if err != nil {

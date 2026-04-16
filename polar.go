@@ -2,6 +2,8 @@ package radix
 
 import "fmt"
 
+// PolarEncode applies the Radix polar code to signed message symbols.
+// Symbols use the package convention +1/-1 instead of 0/1 bits.
 func PolarEncode(message []int8, frozen []uint32, order int) ([]int8, error) {
 	length := 1 << order
 	if len(frozen)*32 < length {
@@ -44,6 +46,9 @@ func PolarEncode(message []int8, frozen []uint32, order int) ([]int8, error) {
 	return codeword, nil
 }
 
+// PolarDecodeHard decodes a polar codeword using hard decisions only.
+// This is suitable for clean captures; noisy real-world decoding will eventually
+// want a soft/list decoder.
 func PolarDecodeHard(codeword []int8, frozen []uint32, order int) ([]int8, error) {
 	length := 1 << order
 	if len(codeword) != length {

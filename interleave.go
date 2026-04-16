@@ -18,6 +18,8 @@ var interleavers = map[int]interleaverParams{
 	16: {1, 1, 14},
 }
 
+// InterleaveEncode permutes symbols before transmission so nearby on-air errors
+// are spread out before decoding. The order is log2(len(src)).
 func InterleaveEncode[T any](src []T, order int) ([]T, error) {
 	length := 1 << order
 	if len(src) != length {
@@ -36,6 +38,7 @@ func InterleaveEncode[T any](src []T, order int) ([]T, error) {
 	return dest, nil
 }
 
+// InterleaveDecode reverses InterleaveEncode.
 func InterleaveDecode[T any](src []T, order int) ([]T, error) {
 	length := 1 << order
 	if len(src) != length {

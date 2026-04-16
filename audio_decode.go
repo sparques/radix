@@ -6,20 +6,41 @@ import (
 	"sort"
 )
 
+// AlignedDecoderConfig contains the receiver settings for one known mode.
+// "Aligned" means the caller already knows the mode; captured decode can still
+// search for the frame start inside the sample buffer.
 type AlignedDecoderConfig struct {
+	// Audio describes the sample rate and center frequency of the capture.
 	Audio AudioConfig
-	Mode  Mode
+	// Mode is the expected modem mode. Current captured decode does not yet
+	// auto-detect the mode.
+	Mode Mode
 }
 
+// Acquisition reports where the receiver found a captured frame and what basic
+// carrier correction it estimated.
 type Acquisition struct {
-	DataStart            int
-	PreambleStart        int
+	// DataStart is the sample index where the first data symbol body begins.
+	DataStart int
+	// PreambleStart is the estimated sample index where the Radix transmission
+	// begins.
+	PreambleStart int
+	// MatchedPreambleStart is the sample index of the preamble body that matched
+	// best during acquisition.
 	MatchedPreambleStart int
-	Score                float64
-	ResidualFrequencyHz  float64
-	PhaseOffsetRadians   float64
+	// Score is a normalized correlation score for the matched preamble. Larger is
+	// better; clean synthetic captures are near 1.
+	Score float64
+	// ResidualFrequencyHz is the estimated carrier offset left in the capture
+	// after the nominal FrequencyOffset is accounted for.
+	ResidualFrequencyHz float64
+	// PhaseOffsetRadians is the estimated constant phase rotation in radians.
+	PhaseOffsetRadians float64
 }
 
+// AnalyzeComplexAligned converts an already-aligned complex capture into OFDM
+// tone frames. It assumes samples begin at the start of a Radix transmission and
+// skips the preamble before analyzing data symbols.
 func AnalyzeComplexAligned(cfg AlignedDecoderConfig, samples []complex64) (ToneFrames, error) {
 	modeCfg, err := Setup(cfg.Mode)
 	if err != nil {
@@ -39,6 +60,9 @@ func AnalyzeComplexAligned(cfg AlignedDecoderConfig, samples []complex64) (ToneF
 	return analyzeComplexAt(modeCfg, analyzer, samples, pos)
 }
 
+// AnalyzeComplexAt converts complex samples into OFDM tone frames starting at a
+// known first data-symbol sample index. Use DecodeCaptured when you do not know
+// that index yet.
 func AnalyzeComplexAt(cfg AlignedDecoderConfig, samples []complex64, dataStart int) (ToneFrames, error) {
 	modeCfg, err := Setup(cfg.Mode)
 	if err != nil {
@@ -51,6 +75,9 @@ func AnalyzeComplexAt(cfg AlignedDecoderConfig, samples []complex64, dataStart i
 	return analyzeComplexAt(modeCfg, analyzer, samples, dataStart)
 }
 
+// AcquireComplex searches a complex capture for the sync preamble and returns
+// the best candidate frame position. It does not decode payload bytes; use
+// DecodeCaptured for the usual receive path.
 func AcquireComplex(cfg AlignedDecoderConfig, samples []complex64) (Acquisition, error) {
 	modeCfg, err := Setup(cfg.Mode)
 	if err != nil {
@@ -67,6 +94,13 @@ func AcquireComplex(cfg AlignedDecoderConfig, samples []complex64) (Acquisition,
 	return candidates[0], nil
 }
 
+// DecodeCaptured searches an arbitrary complex sample buffer for a frame,
+// corrects basic carrier frequency and phase, then returns decoded metadata and
+// the padded payload bytes.
+//
+// The caller must still provide the expected Mode in cfg. If you captured from a
+// sound card or file, remove DC and keep samples scaled near [-1,+1] for best
+// results.
 func DecodeCaptured(cfg AlignedDecoderConfig, samples []complex64) (Metadata, []byte, Acquisition, error) {
 	modeCfg, err := Setup(cfg.Mode)
 	if err != nil {
@@ -357,6 +391,8 @@ func (a *symbolAnalyzer) analyze(samples []complex64) []complex128 {
 	return tones
 }
 
+// NearestSignedTone turns a demapped tone into a hard -1/+1 bit decision.
+// Positive real values become +1; negative real values become -1.
 func NearestSignedTone(v complex128) int8 {
 	if real(v) < 0 {
 		return -1

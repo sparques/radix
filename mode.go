@@ -3,38 +3,73 @@ package radix
 import "fmt"
 
 const (
-	ModMax     = 12
-	CodeMax    = 16
-	BitsMax    = 1 << CodeMax
-	DataMax    = 8192
+	// ModMax is the largest number of bits any supported modulation can place on
+	// one data tone. Most callers use Modulation values instead.
+	ModMax = 12
+	// CodeMax is the largest polar-code order supported by the mode tables.
+	CodeMax = 16
+	// BitsMax is the largest encoded payload bit count supported by the package.
+	BitsMax = 1 << CodeMax
+	// DataMax is the largest uncoded payload size, in bytes, for any mode.
+	DataMax = 8192
+	// SymbolsMax is the maximum number of OFDM data symbols plus metadata.
 	SymbolsMax = 26 + 1
 
+	// MLS0Poly is the maximal-length-sequence polynomial used by the sync
+	// preamble. You normally do not need this unless you are inspecting the wire
+	// format.
 	MLS0Poly = 0x331
+	// MLS0Seed is the starting state for the sync preamble sequence.
 	MLS0Seed = 214
+	// MLS1Poly is the maximal-length-sequence polynomial used for seed tones.
 	MLS1Poly = 0x43
+	// MLS2Poly is the maximal-length-sequence polynomial used by the transmitter
+	// noise and PAPR-related parts of the format.
 	MLS2Poly = 0x163
 
-	DataTones   = 256
-	SeedTones   = 64
-	ToneCount   = DataTones + SeedTones
+	// DataTones is the number of OFDM tones that carry metadata or payload in a
+	// symbol.
+	DataTones = 256
+	// SeedTones is the number of OFDM tones reserved as known reference tones.
+	// The receiver uses them to correct phase and gain.
+	SeedTones = 64
+	// ToneCount is the total number of active OFDM tones in one symbol.
+	ToneCount = DataTones + SeedTones
+	// BlockLength is the spacing pattern used to interleave seed tones among data
+	// tones.
 	BlockLength = 5
-	BlockSkew   = 3
-	FirstSeed   = 4
+	// BlockSkew is the per-symbol shift of the seed-tone pattern.
+	BlockSkew = 3
+	// FirstSeed is the first seed-tone slot in the tone pattern.
+	FirstSeed = 4
 )
 
+// Modulation selects how many possible symbols are sent on each data tone.
+// BPSK is easiest to receive but slowest; larger QAM modes are faster and need
+// a cleaner channel.
 type Modulation uint8
 
 const (
+	// BPSK sends one bit per data tone and is the most robust modulation.
 	BPSK Modulation = iota
+	// QPSK sends two bits per data tone.
 	QPSK
+	// PSK8 sends three bits per data tone.
 	PSK8
+	// QAM16 sends four bits per data tone.
 	QAM16
+	// QAM64 sends six bits per data tone.
 	QAM64
+	// QAM256 sends eight bits per data tone.
 	QAM256
+	// QAM1024 sends ten bits per data tone.
 	QAM1024
+	// QAM4096 sends twelve bits per data tone and needs the cleanest channel.
 	QAM4096
 )
 
+// String returns the protocol spelling for the modulation, such as "QPSK" or
+// "QAM16".
 func (m Modulation) String() string {
 	switch m {
 	case BPSK:
@@ -58,6 +93,7 @@ func (m Modulation) String() string {
 	}
 }
 
+// ParseModulation parses the strings produced by Modulation.String.
 func ParseModulation(s string) (Modulation, error) {
 	switch s {
 	case "BPSK":
@@ -81,15 +117,23 @@ func ParseModulation(s string) (Modulation, error) {
 	}
 }
 
+// CodeRate selects how much forward-error-correction redundancy is added.
+// Lower rates are slower but leave more room for the decoder to recover from
+// bit errors.
 type CodeRate uint8
 
 const (
+	// RateHalf is the most redundant supported code rate.
 	RateHalf CodeRate = iota
+	// RateTwoThirds carries more data than RateHalf with less redundancy.
 	RateTwoThirds
+	// RateThreeQuarters is a middle/high throughput code rate.
 	RateThreeQuarters
+	// RateFiveSixths is the least redundant supported code rate.
 	RateFiveSixths
 )
 
+// String returns the protocol spelling for the code rate, such as "1/2".
 func (r CodeRate) String() string {
 	switch r {
 	case RateHalf:
@@ -105,6 +149,7 @@ func (r CodeRate) String() string {
 	}
 }
 
+// ParseCodeRate parses the strings produced by CodeRate.String.
 func ParseCodeRate(s string) (CodeRate, error) {
 	switch s {
 	case "1/2":
@@ -120,13 +165,18 @@ func ParseCodeRate(s string) (CodeRate, error) {
 	}
 }
 
+// FrameSize selects the short or normal form of the on-air frame.
+// Short frames finish sooner; normal frames carry more data per transmission.
 type FrameSize uint8
 
 const (
+	// ShortFrame selects the shorter frame format.
 	ShortFrame FrameSize = iota
+	// NormalFrame selects the normal, higher-capacity frame format.
 	NormalFrame
 )
 
+// String returns "short" or "normal".
 func (s FrameSize) String() string {
 	switch s {
 	case ShortFrame:
@@ -138,6 +188,7 @@ func (s FrameSize) String() string {
 	}
 }
 
+// ParseFrameSize parses the strings produced by FrameSize.String.
 func ParseFrameSize(s string) (FrameSize, error) {
 	switch s {
 	case "short":
@@ -149,8 +200,12 @@ func ParseFrameSize(s string) (FrameSize, error) {
 	}
 }
 
+// Mode is the compact protocol byte that combines modulation, code rate, and
+// frame size. Use NewMode to build one instead of packing bits by hand.
 type Mode uint8
 
+// NewMode packs modulation, code rate, and frame size into a Mode after checking
+// that each part is supported.
 func NewMode(mod Modulation, rate CodeRate, frame FrameSize) (Mode, error) {
 	if mod > QAM4096 {
 		return 0, fmt.Errorf("unsupported modulation %d", mod)
@@ -164,37 +219,60 @@ func NewMode(mod Modulation, rate CodeRate, frame FrameSize) (Mode, error) {
 	return Mode(uint8(mod)<<4 | uint8(rate)<<1 | uint8(frame)), nil
 }
 
+// Modulation extracts the modulation part of a Mode.
 func (m Mode) Modulation() Modulation {
 	return Modulation((m >> 4) & 7)
 }
 
+// CodeRate extracts the forward-error-correction rate part of a Mode.
 func (m Mode) CodeRate() CodeRate {
 	return CodeRate((m >> 1) & 7)
 }
 
+// FrameSize extracts the short/normal frame selection part of a Mode.
 func (m Mode) FrameSize() FrameSize {
 	return FrameSize(m & 1)
 }
 
+// Analog reports whether the analog-mode bit is set. Radix currently implements
+// the digital modem path, so Setup rejects analog modes.
 func (m Mode) Analog() bool {
 	return m&128 != 0
 }
 
+// Config is the expanded, easy-to-use description of a Mode.
+// It includes derived sizes such as how many payload bytes fit and how many OFDM
+// symbols the frame uses.
 type Config struct {
-	Mode        Mode
-	Modulation  Modulation
-	CodeRate    CodeRate
-	FrameSize   FrameSize
-	FrozenBits  []uint32
-	ModBits     int
-	DataBits    int
-	DataBytes   int
-	CodeOrder   int
+	// Mode is the compact protocol mode byte this config was derived from.
+	Mode Mode
+	// Modulation is the modulation selected by Mode.
+	Modulation Modulation
+	// CodeRate is the forward-error-correction rate selected by Mode.
+	CodeRate CodeRate
+	// FrameSize is the short/normal frame setting selected by Mode.
+	FrameSize FrameSize
+	// FrozenBits is the polar-code frozen-bit table for this payload mode.
+	FrozenBits []uint32
+	// ModBits is the number of bits carried by a full data tone.
+	ModBits int
+	// DataBits is the number of payload data bits before the payload CRC.
+	DataBits int
+	// DataBytes is the number of payload bytes available to callers.
+	DataBytes int
+	// CodeOrder is log2 of the encoded payload bit count.
+	CodeOrder int
+	// SymbolCount is the number of payload OFDM symbols, excluding metadata.
 	SymbolCount int
-	Duration    float64
+	// Duration is the approximate frame duration in seconds.
+	Duration float64
+	// BitrateKbps is the approximate user payload rate in kilobits per second.
 	BitrateKbps float64
 }
 
+// Setup expands a Mode into all derived parameters needed by encoders and
+// decoders. Most higher-level functions call Setup internally, but it is useful
+// when you need to size payloads before encoding.
 func Setup(mode Mode) (Config, error) {
 	if mode.Analog() {
 		return Config{}, fmt.Errorf("analog mode is not supported")

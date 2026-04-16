@@ -2,6 +2,8 @@ package radix
 
 import "math/bits"
 
+// HadamardEncode7 encodes a 7-bit word into 64 signed symbols.
+// Radix uses this style of code for robust small control values.
 func HadamardEncode7(message int) [SeedTones]int8 {
 	var code [SeedTones]int8
 	for i := range code {
@@ -14,6 +16,8 @@ func HadamardEncode7(message int) [SeedTones]int8 {
 	return code
 }
 
+// HadamardDecode7 decodes a 64-symbol Hadamard word and returns the most likely
+// 7-bit value. It returns -1 when there is no unique best match.
 func HadamardDecode7(code []int8) int {
 	if len(code) != SeedTones {
 		return -1

@@ -5,11 +5,21 @@ import (
 	"math"
 )
 
+// AudioConfig describes the sample stream used by the audio encoder and
+// receiver. SampleRate must currently be 44100 or 48000. FrequencyOffset is the
+// center frequency, in Hz, used when the modem signal is represented as real
+// audio instead of complex IQ.
 type AudioConfig struct {
-	SampleRate      int
+	// SampleRate is the audio sample rate in Hz. Radix currently supports 44100
+	// and 48000.
+	SampleRate int
+	// FrequencyOffset is the center frequency in Hz for real mono audio. For
+	// complex IQ streams it still controls tone placement.
 	FrequencyOffset int
 }
 
+// GuardLen returns the guard interval length in samples. The guard interval is
+// the small overlap region between OFDM symbols.
 func (c AudioConfig) GuardLen() (int, error) {
 	if c.SampleRate != 44100 && c.SampleRate != 48000 {
 		return 0, fmt.Errorf("unsupported sample rate %d", c.SampleRate)
@@ -17,6 +27,8 @@ func (c AudioConfig) GuardLen() (int, error) {
 	return c.SampleRate / 300, nil
 }
 
+// SymbolLen returns the useful OFDM symbol length in samples, excluding the
+// guard interval.
 func (c AudioConfig) SymbolLen() (int, error) {
 	guardLen, err := c.GuardLen()
 	if err != nil {
@@ -25,16 +37,30 @@ func (c AudioConfig) SymbolLen() (int, error) {
 	return guardLen * 40, nil
 }
 
+// ToneOffset returns the active-tone offset for FrequencyOffset at the selected
+// sample rate. Most callers only need this when inspecting or debugging tone
+// placement.
 func (c AudioConfig) ToneOffset() (int, error) {
 	return ToneOffset(c.SampleRate, c.FrequencyOffset)
 }
 
+// EncoderConfig contains the non-payload inputs needed to synthesize a modem
+// frame.
 type EncoderConfig struct {
-	Audio    AudioConfig
-	Mode     Mode
+	// Audio describes the sample rate and center frequency for generated audio.
+	Audio AudioConfig
+	// Mode selects the modulation, code rate, and frame size.
+	Mode Mode
+	// CallSign is the packed numeric call sign from EncodeCallSign.
 	CallSign int64
 }
 
+// EncodeComplex encodes payload bytes into complex analytic audio samples.
+//
+// Complex samples are the package's native audio representation: real and
+// imaginary parts are the I/Q pair, usually in the range [-1,+1]. Use
+// ComplexToMonoFloat32 or WriteWAVMonoInt16 if your output device wants ordinary
+// mono audio centered at AudioConfig.FrequencyOffset.
 func EncodeComplex(cfg EncoderConfig, payload []byte) ([]complex64, error) {
 	modeCfg, err := Setup(cfg.Mode)
 	if err != nil {
@@ -74,6 +100,8 @@ func EncodeComplex(cfg EncoderConfig, payload []byte) ([]complex64, error) {
 	return out, nil
 }
 
+// ComplexToInterleavedFloat32 converts complex samples into stereo-style
+// float32 IQ: real0, imag0, real1, imag1, and so on.
 func ComplexToInterleavedFloat32(samples []complex64) []float32 {
 	out := make([]float32, 2*len(samples))
 	for i, sample := range samples {
@@ -83,6 +111,8 @@ func ComplexToInterleavedFloat32(samples []complex64) []float32 {
 	return out
 }
 
+// ComplexToMonoFloat32 keeps only the real part of complex samples. Use this for
+// ordinary one-channel audio output after choosing a valid FrequencyOffset.
 func ComplexToMonoFloat32(samples []complex64) []float32 {
 	out := make([]float32, len(samples))
 	for i, sample := range samples {

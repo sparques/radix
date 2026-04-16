@@ -5,14 +5,24 @@ import (
 	"math"
 )
 
+// Constellation maps signed bits to complex symbols and back.
+// Think of a constellation as the little diagram of allowed points for BPSK,
+// QPSK, or QAM. Bits are represented as -1/+1 values throughout this package.
 type Constellation interface {
+	// Modulation returns the modulation this mapper implements.
 	Modulation() Modulation
+	// Bits returns how many signed bits one symbol carries.
 	Bits() int
+	// Map converts signed bits into one complex constellation point.
 	Map(bits []float64) (complex128, error)
+	// Hard returns the nearest signed-bit decision for a received point.
 	Hard(symbol complex128) []float64
+	// Soft returns confidence-weighted signed bits for a received point.
+	// Larger magnitudes mean stronger confidence.
 	Soft(symbol complex128, precision float64) []float64
 }
 
+// NewConstellation returns the mapper/demapper for a modulation.
 func NewConstellation(mod Modulation) (Constellation, error) {
 	switch mod {
 	case BPSK, QPSK, PSK8:

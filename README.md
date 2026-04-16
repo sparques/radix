@@ -162,5 +162,27 @@ metadata, payload, acquisition, err = radix.DecodeInterleavedFloat32CapturedFrom
 })
 ```
 
+Minimal WAV support is built in for RIFF/WAVE PCM16 and IEEE float32 captures.
+One-channel WAV data is treated as real audio, and two-channel WAV data is
+treated as interleaved IQ:
+
+```go
+metadata, payload, acquisition, info, err := radix.DecodeWAVCapturedFrom(reader, radix.AlignedDecoderConfig{
+	Audio: radix.AudioConfig{
+		SampleRate:      48000,
+		FrequencyOffset: 1500,
+	},
+	Mode: mode,
+})
+if err != nil {
+	panic(err)
+}
+
+_, _, _, _ = metadata, payload, acquisition, info
+```
+
+For front-ends that already own audio capture, `RemoveDC` and `NormalizePeak`
+are available as small conditioning helpers before calling `DecodeCaptured`.
+
 Real captures still need more receiver work for difficult channels: sample-rate
 tracking, stronger channel interpolation, and soft/noisy polar decoding.

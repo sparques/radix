@@ -2,8 +2,13 @@ package radix
 
 import "fmt"
 
+// MaxCallSign is one past the largest packed call-sign value accepted by the
+// modem metadata field.
 const MaxCallSign = 262144000000000
 
+// EncodeCallSign packs a call sign into the numeric form stored in frame
+// metadata. Letters are case-insensitive; supported characters are space, slash,
+// digits, and A-Z.
 func EncodeCallSign(s string) (int64, error) {
 	var acc int64
 	for _, c := range s {
@@ -28,6 +33,8 @@ func EncodeCallSign(s string) (int64, error) {
 	return acc, nil
 }
 
+// DecodeCallSign unpacks a numeric call-sign value into a fixed-length string.
+// Use the same length you want displayed by your application.
 func DecodeCallSign(value int64, length int) (string, error) {
 	if value < 0 {
 		return "", fmt.Errorf("negative call sign value %d", value)

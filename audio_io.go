@@ -6,6 +6,8 @@ import (
 	"math"
 )
 
+// EncodeComplexTo writes EncodeComplex output as little-endian complex64
+// samples. Each sample is two float32 values: real then imaginary.
 func EncodeComplexTo(w io.Writer, cfg EncoderConfig, payload []byte) error {
 	samples, err := EncodeComplex(cfg, payload)
 	if err != nil {
@@ -14,6 +16,8 @@ func EncodeComplexTo(w io.Writer, cfg EncoderConfig, payload []byte) error {
 	return WriteComplex64LE(w, samples)
 }
 
+// WriteComplex64LE writes complex samples as little-endian real/imag float32
+// pairs. This is the simplest lossless stream format for Radix IQ samples.
 func WriteComplex64LE(w io.Writer, samples []complex64) error {
 	var buf [8]byte
 	for _, sample := range samples {
@@ -26,22 +30,31 @@ func WriteComplex64LE(w io.Writer, samples []complex64) error {
 	return nil
 }
 
+// WriteInterleavedFloat32LE writes complex samples as little-endian stereo IQ
+// float32 values: I, Q, I, Q.
 func WriteInterleavedFloat32LE(w io.Writer, samples []complex64) error {
 	return WriteFloat32LE(w, ComplexToInterleavedFloat32(samples))
 }
 
+// WriteMonoFloat32LE writes the real part of complex samples as little-endian
+// mono float32 audio.
 func WriteMonoFloat32LE(w io.Writer, samples []complex64) error {
 	return WriteFloat32LE(w, ComplexToMonoFloat32(samples))
 }
 
+// WriteInterleavedInt16LE writes complex samples as little-endian stereo IQ
+// signed 16-bit PCM.
 func WriteInterleavedInt16LE(w io.Writer, samples []complex64) error {
 	return WriteInt16LE(w, ComplexToInterleavedInt16(samples))
 }
 
+// WriteMonoInt16LE writes the real part of complex samples as little-endian mono
+// signed 16-bit PCM.
 func WriteMonoInt16LE(w io.Writer, samples []complex64) error {
 	return WriteInt16LE(w, ComplexToMonoInt16(samples))
 }
 
+// WriteFloat32LE writes raw little-endian float32 samples.
 func WriteFloat32LE(w io.Writer, samples []float32) error {
 	var buf [4]byte
 	for _, sample := range samples {
@@ -53,6 +66,7 @@ func WriteFloat32LE(w io.Writer, samples []float32) error {
 	return nil
 }
 
+// WriteInt16LE writes raw little-endian signed 16-bit samples.
 func WriteInt16LE(w io.Writer, samples []int16) error {
 	var buf [2]byte
 	for _, sample := range samples {
@@ -64,6 +78,8 @@ func WriteInt16LE(w io.Writer, samples []int16) error {
 	return nil
 }
 
+// ReadComplex64LE reads little-endian real/imag float32 pairs into complex
+// samples.
 func ReadComplex64LE(r io.Reader) ([]complex64, error) {
 	raw, err := io.ReadAll(r)
 	if err != nil {
@@ -81,6 +97,7 @@ func ReadComplex64LE(r io.Reader) ([]complex64, error) {
 	return out, nil
 }
 
+// ReadFloat32LE reads a raw little-endian float32 sample stream.
 func ReadFloat32LE(r io.Reader) ([]float32, error) {
 	raw, err := io.ReadAll(r)
 	if err != nil {
@@ -96,6 +113,7 @@ func ReadFloat32LE(r io.Reader) ([]float32, error) {
 	return out, nil
 }
 
+// ReadInt16LE reads a raw little-endian signed 16-bit sample stream.
 func ReadInt16LE(r io.Reader) ([]int16, error) {
 	raw, err := io.ReadAll(r)
 	if err != nil {
@@ -111,6 +129,8 @@ func ReadInt16LE(r io.Reader) ([]int16, error) {
 	return out, nil
 }
 
+// InterleavedFloat32ToComplex converts stereo-style float32 IQ values into
+// complex samples.
 func InterleavedFloat32ToComplex(samples []float32) ([]complex64, error) {
 	if len(samples)%2 != 0 {
 		return nil, io.ErrUnexpectedEOF
@@ -122,6 +142,8 @@ func InterleavedFloat32ToComplex(samples []float32) ([]complex64, error) {
 	return out, nil
 }
 
+// MonoFloat32ToComplex converts mono float32 samples into complex samples with a
+// zero imaginary part.
 func MonoFloat32ToComplex(samples []float32) []complex64 {
 	out := make([]complex64, len(samples))
 	for i, sample := range samples {
@@ -130,6 +152,8 @@ func MonoFloat32ToComplex(samples []float32) []complex64 {
 	return out
 }
 
+// ComplexToInterleavedInt16 converts complex samples to stereo-style signed
+// 16-bit IQ values.
 func ComplexToInterleavedInt16(samples []complex64) []int16 {
 	out := make([]int16, 2*len(samples))
 	for i, sample := range samples {
@@ -139,6 +163,8 @@ func ComplexToInterleavedInt16(samples []complex64) []int16 {
 	return out
 }
 
+// ComplexToMonoInt16 converts the real part of complex samples to signed 16-bit
+// mono PCM.
 func ComplexToMonoInt16(samples []complex64) []int16 {
 	out := make([]int16, len(samples))
 	for i, sample := range samples {
@@ -147,6 +173,8 @@ func ComplexToMonoInt16(samples []complex64) []int16 {
 	return out
 }
 
+// InterleavedInt16ToComplex converts stereo-style signed 16-bit IQ values into
+// complex samples scaled roughly to [-1,+1].
 func InterleavedInt16ToComplex(samples []int16) ([]complex64, error) {
 	if len(samples)%2 != 0 {
 		return nil, io.ErrUnexpectedEOF
@@ -158,6 +186,8 @@ func InterleavedInt16ToComplex(samples []int16) ([]complex64, error) {
 	return out, nil
 }
 
+// MonoInt16ToComplex converts mono signed 16-bit PCM into complex samples with a
+// zero imaginary part.
 func MonoInt16ToComplex(samples []int16) []complex64 {
 	out := make([]complex64, len(samples))
 	for i, sample := range samples {
@@ -178,6 +208,8 @@ func int16ToFloat32(sample int16) float32 {
 	return float32(sample) / 32768
 }
 
+// AnalyzeComplexAlignedFrom reads little-endian complex64 samples and analyzes
+// them as an already-aligned frame.
 func AnalyzeComplexAlignedFrom(r io.Reader, cfg AlignedDecoderConfig) (ToneFrames, error) {
 	samples, err := ReadComplex64LE(r)
 	if err != nil {
@@ -186,6 +218,8 @@ func AnalyzeComplexAlignedFrom(r io.Reader, cfg AlignedDecoderConfig) (ToneFrame
 	return AnalyzeComplexAligned(cfg, samples)
 }
 
+// DecodeAlignedFrom reads little-endian complex64 samples and decodes an
+// already-aligned frame.
 func DecodeAlignedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, error) {
 	samples, err := ReadComplex64LE(r)
 	if err != nil {
@@ -194,6 +228,8 @@ func DecodeAlignedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte,
 	return DecodeAligned(cfg, samples)
 }
 
+// DecodeCapturedFrom reads little-endian complex64 samples and runs captured
+// frame acquisition and decode.
 func DecodeCapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, Acquisition, error) {
 	samples, err := ReadComplex64LE(r)
 	if err != nil {
@@ -202,6 +238,8 @@ func DecodeCapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte
 	return DecodeCaptured(cfg, samples)
 }
 
+// DecodeInterleavedFloat32CapturedFrom reads stereo-style float32 IQ samples and
+// runs captured frame acquisition and decode.
 func DecodeInterleavedFloat32CapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, Acquisition, error) {
 	raw, err := ReadFloat32LE(r)
 	if err != nil {
@@ -214,6 +252,8 @@ func DecodeInterleavedFloat32CapturedFrom(r io.Reader, cfg AlignedDecoderConfig)
 	return DecodeCaptured(cfg, samples)
 }
 
+// DecodeMonoFloat32CapturedFrom reads mono float32 audio and runs captured frame
+// acquisition and decode.
 func DecodeMonoFloat32CapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, Acquisition, error) {
 	raw, err := ReadFloat32LE(r)
 	if err != nil {
@@ -222,6 +262,8 @@ func DecodeMonoFloat32CapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metad
 	return DecodeCaptured(cfg, MonoFloat32ToComplex(raw))
 }
 
+// DecodeInterleavedInt16CapturedFrom reads stereo-style signed 16-bit IQ samples
+// and runs captured frame acquisition and decode.
 func DecodeInterleavedInt16CapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, Acquisition, error) {
 	raw, err := ReadInt16LE(r)
 	if err != nil {
@@ -234,6 +276,8 @@ func DecodeInterleavedInt16CapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (
 	return DecodeCaptured(cfg, samples)
 }
 
+// DecodeMonoInt16CapturedFrom reads mono signed 16-bit PCM audio and runs
+// captured frame acquisition and decode.
 func DecodeMonoInt16CapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, Acquisition, error) {
 	raw, err := ReadInt16LE(r)
 	if err != nil {

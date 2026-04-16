@@ -130,8 +130,9 @@ _, _ = metadata, payload
 ```
 
 Captured receive can search an arbitrary complex sample buffer for the repeated
-Schmidl-Cox preamble, align to the first data symbol, and recover the metadata
-and padded payload. The mode is still supplied by the caller:
+Schmidl-Cox preamble, estimate residual carrier frequency and IQ phase, align to
+the first data symbol, and recover the metadata and padded payload. The mode is
+still supplied by the caller:
 
 ```go
 metadata, payload, acquisition, err := radix.DecodeCaptured(radix.AlignedDecoderConfig{
@@ -148,8 +149,8 @@ if err != nil {
 _, _, _ = metadata, payload, acquisition
 ```
 
-Reader helpers are available for little-endian complex64, stereo float32 IQ, and
-mono float32 captures:
+Reader helpers are available for little-endian complex64, stereo float32 IQ,
+mono float32, stereo int16 IQ, and mono int16 captures:
 
 ```go
 metadata, payload, acquisition, err = radix.DecodeInterleavedFloat32CapturedFrom(reader, radix.AlignedDecoderConfig{
@@ -162,4 +163,4 @@ metadata, payload, acquisition, err = radix.DecodeInterleavedFloat32CapturedFrom
 ```
 
 Real captures still need more receiver work for difficult channels: carrier and
-sample-rate correction, channel estimation, and soft/noisy polar decoding.
+sample-rate tracking, channel estimation, and soft/noisy polar decoding.

@@ -2,6 +2,7 @@ package radix
 
 import (
 	"bytes"
+	"math"
 	"testing"
 )
 
@@ -246,5 +247,89 @@ func TestDecodeInterleavedFloat32CapturedFrom(t *testing.T) {
 	}
 	if string(payload[:2]) != "iq" {
 		t.Fatalf("payload prefix = %q, want iq", payload[:2])
+	}
+}
+
+func TestDecodeInterleavedInt16CapturedFrom(t *testing.T) {
+	mode, err := NewMode(BPSK, RateHalf, ShortFrame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := EncodeCallSign("N0CALL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	audio := AudioConfig{SampleRate: 44100, FrequencyOffset: 1500}
+	samples, err := EncodeComplex(EncoderConfig{Audio: audio, Mode: mode, CallSign: call}, []byte("pcm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	captured := make([]complex64, 105+len(samples))
+	copy(captured[105:], samples)
+
+	var buf bytes.Buffer
+	if err := WriteInterleavedInt16LE(&buf, captured); err != nil {
+		t.Fatal(err)
+	}
+	metadata, payload, acquisition, err := DecodeInterleavedInt16CapturedFrom(&buf, AlignedDecoderConfig{Audio: audio, Mode: mode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acquisition.PreambleStart != 105 {
+		t.Fatalf("preamble start = %d, want 105", acquisition.PreambleStart)
+	}
+	if metadata.CallSignValue != call {
+		t.Fatalf("call = %d, want %d", metadata.CallSignValue, call)
+	}
+	if string(payload[:3]) != "pcm" {
+		t.Fatalf("payload prefix = %q, want pcm", payload[:3])
+	}
+}
+
+func TestDecodeCapturedCorrectsResidualCarrier(t *testing.T) {
+	mode, err := NewMode(QPSK, RateHalf, ShortFrame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := EncodeCallSign("N0CALL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	audio := AudioConfig{SampleRate: 44100, FrequencyOffset: 1500}
+	wantPayload := []byte("carrier")
+	samples, err := EncodeComplex(EncoderConfig{Audio: audio, Mode: mode, CallSign: call}, wantPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const leading = 211
+	captured := make([]complex64, leading+len(samples)+95)
+	copy(captured[leading:], samples)
+	rotateSamples(captured, audio.SampleRate, 1.25, 1.1)
+
+	metadata, payload, acquisition, err := DecodeCaptured(AlignedDecoderConfig{Audio: audio, Mode: mode}, captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acquisition.PreambleStart != leading {
+		t.Fatalf("preamble start = %d, want %d", acquisition.PreambleStart, leading)
+	}
+	if math.Abs(acquisition.ResidualFrequencyHz-1.25) > 0.02 {
+		t.Fatalf("residual frequency = %.6f, want 1.25", acquisition.ResidualFrequencyHz)
+	}
+	if metadata.CallSignValue != call {
+		t.Fatalf("call = %d, want %d", metadata.CallSignValue, call)
+	}
+	if string(payload[:len(wantPayload)]) != string(wantPayload) {
+		t.Fatalf("payload prefix = %q, want %q", payload[:len(wantPayload)], wantPayload)
+	}
+}
+
+func rotateSamples(samples []complex64, sampleRate int, frequencyHz, phaseRadians float64) {
+	omega := 2 * math.Pi * frequencyHz / float64(sampleRate)
+	for i, sample := range samples {
+		phase := omega*float64(i) + phaseRadians
+		rot := complex64(complex(math.Cos(phase), math.Sin(phase)))
+		samples[i] = sample * rot
 	}
 }

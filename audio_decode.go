@@ -16,6 +16,8 @@ type Acquisition struct {
 	PreambleStart        int
 	MatchedPreambleStart int
 	Score                float64
+	ResidualFrequencyHz  float64
+	PhaseOffsetRadians   float64
 }
 
 func AnalyzeComplexAligned(cfg AlignedDecoderConfig, samples []complex64) (ToneFrames, error) {
@@ -81,7 +83,8 @@ func DecodeCaptured(cfg AlignedDecoderConfig, samples []complex64) (Metadata, []
 
 	var lastErr error
 	for _, acquisition := range candidates {
-		frames, err := analyzeComplexAt(modeCfg, analyzer, samples, acquisition.DataStart)
+		corrected := correctCarrier(samples, cfg.Audio.SampleRate, acquisition.ResidualFrequencyHz, acquisition.PhaseOffsetRadians)
+		frames, err := analyzeComplexAt(modeCfg, analyzer, corrected, acquisition.DataStart)
 		if err != nil {
 			lastErr = err
 			continue
@@ -167,20 +170,24 @@ func acquireComplexCandidates(audio AudioConfig, modeCfg Config, analyzer *symbo
 
 	frameCount := modeCfg.SymbolCount + 1
 	stride := analyzer.guardLen + analyzer.symbolLen
+	repeatDistance := analyzer.symbolLen
 	seenData := map[int]bool{}
 	acquisitions := make([]Acquisition, 0, 2*len(refined))
 	for _, candidate := range refined {
 		hypotheses := []struct {
 			dataStart int
-			pairStart int
+			body1     int
+			body2     int
 		}{
 			{
 				dataStart: candidate.start + analyzer.guardLen + analyzer.symbolLen,
-				pairStart: candidate.start - stride,
+				body1:     candidate.start - repeatDistance,
+				body2:     candidate.start,
 			},
 			{
 				dataStart: candidate.start + analyzer.guardLen + 2*analyzer.symbolLen,
-				pairStart: candidate.start + stride,
+				body1:     candidate.start,
+				body2:     candidate.start + repeatDistance,
 			},
 		}
 		for _, hypothesis := range hypotheses {
@@ -189,16 +196,19 @@ func acquireComplexCandidates(audio AudioConfig, modeCfg Config, analyzer *symbo
 			if required > len(samples) || seenData[dataStart] {
 				continue
 			}
-			pairScore := 0.0
-			if hypothesis.pairStart >= 0 && hypothesis.pairStart+len(template) <= len(samples) {
-				pairScore = correlationScore(samples[hypothesis.pairStart:hypothesis.pairStart+len(template)], template)
+			if hypothesis.body1 < 0 || hypothesis.body2+len(template) > len(samples) {
+				continue
 			}
+			pairScore := correlationScore(samples[hypothesis.body1:hypothesis.body1+len(template)], template)
 			score := math.Min(candidate.score, pairScore)
+			frequencyHz, phaseRadians := estimateCarrier(samples, template, hypothesis.body1, hypothesis.body2, audio.SampleRate, repeatDistance)
 			acquisitions = append(acquisitions, Acquisition{
 				DataStart:            dataStart,
 				PreambleStart:        dataStart - 3*stride,
 				MatchedPreambleStart: candidate.start,
 				Score:                score,
+				ResidualFrequencyHz:  frequencyHz,
+				PhaseOffsetRadians:   phaseRadians,
 			})
 			seenData[dataStart] = true
 		}
@@ -263,6 +273,43 @@ func correlationScore(samples, template []complex64) float64 {
 		return 0
 	}
 	return math.Hypot(real(cross), imag(cross)) / math.Sqrt(sampleEnergy*templateEnergy)
+}
+
+func estimateCarrier(samples, template []complex64, body1, body2, sampleRate, repeatDistance int) (float64, float64) {
+	var repeatedCross complex128
+	for i := range template {
+		a := complex128(samples[body1+i])
+		b := complex128(samples[body2+i])
+		repeatedCross += b * complex(real(a), -imag(a))
+	}
+	phaseDelta := math.Atan2(imag(repeatedCross), real(repeatedCross))
+	frequencyHz := phaseDelta * float64(sampleRate) / (2 * math.Pi * float64(repeatDistance))
+
+	var templateCross complex128
+	omega := 2 * math.Pi * frequencyHz / float64(sampleRate)
+	for i, sample := range samples[body1 : body1+len(template)] {
+		n := body1 + i
+		phase := -omega * float64(n)
+		rot := complex(math.Cos(phase), math.Sin(phase))
+		t := complex128(template[i])
+		templateCross += complex128(sample) * rot * complex(real(t), -imag(t))
+	}
+	phaseRadians := math.Atan2(imag(templateCross), real(templateCross))
+	return frequencyHz, phaseRadians
+}
+
+func correctCarrier(samples []complex64, sampleRate int, frequencyHz, phaseRadians float64) []complex64 {
+	if frequencyHz == 0 && phaseRadians == 0 {
+		return samples
+	}
+	out := make([]complex64, len(samples))
+	omega := 2 * math.Pi * frequencyHz / float64(sampleRate)
+	for i, sample := range samples {
+		phase := -(omega*float64(i) + phaseRadians)
+		rot := complex64(complex(math.Cos(phase), math.Sin(phase)))
+		out[i] = sample * rot
+	}
+	return out
 }
 
 func encodedSampleLen(cfg Config, guardLen, symbolLen int) int {

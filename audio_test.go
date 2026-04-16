@@ -77,3 +77,25 @@ func TestFloat32Adapters(t *testing.T) {
 		t.Fatalf("ComplexToMonoFloat32 = %v", mono)
 	}
 }
+
+func TestInt16Adapters(t *testing.T) {
+	samples := []complex64{complex(1, -1), complex(0.5, 0.25)}
+	stereo := ComplexToInterleavedInt16(samples)
+	if len(stereo) != 4 || stereo[0] != 32767 || stereo[1] != -32768 || stereo[2] != 16384 || stereo[3] != 8192 {
+		t.Fatalf("ComplexToInterleavedInt16 = %v", stereo)
+	}
+	roundTrip, err := InterleavedInt16ToComplex(stereo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roundTrip) != len(samples) {
+		t.Fatalf("round trip len = %d, want %d", len(roundTrip), len(samples))
+	}
+	if real(roundTrip[0]) < 0.999 || imag(roundTrip[0]) != -1 {
+		t.Fatalf("roundTrip[0] = %v", roundTrip[0])
+	}
+	mono := ComplexToMonoInt16(samples)
+	if len(mono) != 2 || mono[0] != 32767 || mono[1] != 16384 {
+		t.Fatalf("ComplexToMonoInt16 = %v", mono)
+	}
+}

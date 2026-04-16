@@ -58,6 +58,29 @@ func (m Modulation) String() string {
 	}
 }
 
+func ParseModulation(s string) (Modulation, error) {
+	switch s {
+	case "BPSK":
+		return BPSK, nil
+	case "QPSK":
+		return QPSK, nil
+	case "8PSK":
+		return PSK8, nil
+	case "QAM16":
+		return QAM16, nil
+	case "QAM64":
+		return QAM64, nil
+	case "QAM256":
+		return QAM256, nil
+	case "QAM1024":
+		return QAM1024, nil
+	case "QAM4096":
+		return QAM4096, nil
+	default:
+		return 0, fmt.Errorf("unsupported modulation %q", s)
+	}
+}
+
 type CodeRate uint8
 
 const (
@@ -82,6 +105,21 @@ func (r CodeRate) String() string {
 	}
 }
 
+func ParseCodeRate(s string) (CodeRate, error) {
+	switch s {
+	case "1/2":
+		return RateHalf, nil
+	case "2/3":
+		return RateTwoThirds, nil
+	case "3/4":
+		return RateThreeQuarters, nil
+	case "5/6":
+		return RateFiveSixths, nil
+	default:
+		return 0, fmt.Errorf("unsupported code rate %q", s)
+	}
+}
+
 type FrameSize uint8
 
 const (
@@ -97,6 +135,17 @@ func (s FrameSize) String() string {
 		return "normal"
 	default:
 		return fmt.Sprintf("FrameSize(%d)", s)
+	}
+}
+
+func ParseFrameSize(s string) (FrameSize, error) {
+	switch s {
+	case "short":
+		return ShortFrame, nil
+	case "normal":
+		return NormalFrame, nil
+	default:
+		return 0, fmt.Errorf("unsupported frame size %q", s)
 	}
 }
 
@@ -136,6 +185,7 @@ type Config struct {
 	Modulation  Modulation
 	CodeRate    CodeRate
 	FrameSize   FrameSize
+	FrozenBits  []uint32
 	ModBits     int
 	DataBits    int
 	DataBytes   int
@@ -194,8 +244,13 @@ func Setup(mode Mode) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	frozenBits, err := FrozenPayloadBits(cfg.CodeOrder, cfg.CodeRate)
+	if err != nil {
+		return Config{}, err
+	}
 	cfg.DataBits = dataBits
 	cfg.DataBytes = dataBits / 8
+	cfg.FrozenBits = frozenBits
 	cfg.Duration = 41.0 / 300.0 * float64(3+cfg.SymbolCount)
 	cfg.BitrateKbps = float64(cfg.DataBits) / cfg.Duration / 1000.0
 

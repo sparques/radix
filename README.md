@@ -26,3 +26,69 @@ if err != nil {
 }
 _ = symbol
 ```
+
+Helpers are also available for the upstream encoder parameters:
+
+```go
+callSign, err := radix.EncodeCallSign("ANONYMOUS")
+if err != nil {
+	panic(err)
+}
+
+if err := radix.ValidateFrequencyOffset(48000, 1, 1500); err != nil {
+	panic(err)
+}
+
+toneOffset, err := radix.ToneOffset(48000, 1500)
+if err != nil {
+	panic(err)
+}
+
+plan, err := radix.BuildTonePlan(cfg)
+if err != nil {
+	panic(err)
+}
+
+metadata, err := radix.EncodeMetadata(callSign, mode)
+if err != nil {
+	panic(err)
+}
+
+payload := radix.ScrambledPayload([]byte("hello"))
+crc := radix.PayloadCRC(payload)
+
+payloadCode, err := radix.EncodePayload(cfg, []byte("hello"))
+if err != nil {
+	panic(err)
+}
+
+toneFrames, err := radix.BuildToneFrames(cfg, metadata, payloadCode)
+if err != nil {
+	panic(err)
+}
+
+_, _, _, _ = toneOffset, plan, crc, toneFrames
+```
+
+Audio encoding uses complex analytic float32 samples. Front-ends can write that
+directly, adapt it to stereo IQ float32, or take the real component for mono
+float32 when using an offset valid for real audio:
+
+```go
+samples, err := radix.EncodeComplex(radix.EncoderConfig{
+	Audio: radix.AudioConfig{
+		SampleRate:      48000,
+		FrequencyOffset: 1500,
+	},
+	Mode:     mode,
+	CallSign: callSign,
+}, []byte("hello"))
+if err != nil {
+	panic(err)
+}
+
+iq := radix.ComplexToInterleavedFloat32(samples)
+mono := radix.ComplexToMonoFloat32(samples)
+
+_, _ = iq, mono
+```

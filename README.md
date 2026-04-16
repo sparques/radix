@@ -131,8 +131,8 @@ _, _ = metadata, payload
 
 Captured receive can search an arbitrary complex sample buffer for the repeated
 Schmidl-Cox preamble, estimate residual carrier frequency and IQ phase, align to
-the first data symbol, and recover the metadata and padded payload. The mode is
-still supplied by the caller:
+the first data symbol, apply seed-tone equalization, and recover the metadata and
+padded payload. The mode is still supplied by the caller:
 
 ```go
 metadata, payload, acquisition, err := radix.DecodeCaptured(radix.AlignedDecoderConfig{
@@ -162,5 +162,5 @@ metadata, payload, acquisition, err = radix.DecodeInterleavedFloat32CapturedFrom
 })
 ```
 
-Real captures still need more receiver work for difficult channels: carrier and
-sample-rate tracking, channel estimation, and soft/noisy polar decoding.
+Real captures still need more receiver work for difficult channels: sample-rate
+tracking, stronger channel interpolation, and soft/noisy polar decoding.

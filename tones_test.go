@@ -139,3 +139,67 @@ func TestDecodeToneFramesRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeFramesForModeEqualizesSeedToneGain(t *testing.T) {
+	mode, err := NewMode(QPSK, RateHalf, ShortFrame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Setup(mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := EncodeCallSign("N0CALL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := EncodeMetadata(call, mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPayload := []byte("equalize")
+	payloadCode, err := EncodePayload(cfg, wantPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames, err := BuildToneFrames(cfg, meta, payloadCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildTonePlan(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for frameIdx, symbolPlan := range plan {
+		estimates := make([]seedGainEstimate, 0, SeedTones)
+		for _, tone := range symbolPlan.Tones {
+			if tone.Kind != SeedTone {
+				continue
+			}
+			amplitude := 0.35 + 0.001*float64((tone.Index+frameIdx)%50)
+			phase := 0.6 + 0.003*float64(tone.Index) + 0.01*float64(frameIdx%3)
+			estimates = append(estimates, seedGainEstimate{
+				tone: tone.Index,
+				gain: cmplx.Rect(amplitude, phase),
+			})
+		}
+		for toneIdx := range frames[frameIdx] {
+			gain, ok := nearestSeedGain(toneIdx, estimates)
+			if !ok {
+				t.Fatal("no seed gain estimate")
+			}
+			frames[frameIdx][toneIdx] *= gain
+		}
+	}
+
+	metadata, payload, err := decodeFramesForMode(mode, cfg, frames)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.CallSignValue != call {
+		t.Fatalf("call = %d, want %d", metadata.CallSignValue, call)
+	}
+	if string(payload[:len(wantPayload)]) != string(wantPayload) {
+		t.Fatalf("payload prefix = %q, want %q", payload[:len(wantPayload)], wantPayload)
+	}
+}

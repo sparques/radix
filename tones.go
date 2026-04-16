@@ -1,6 +1,9 @@
 package radix
 
-import "fmt"
+import (
+	"fmt"
+	"math/cmplx"
+)
 
 type ToneFrames [][]complex128
 
@@ -104,6 +107,81 @@ func DecodeToneFrames(cfg Config, frames ToneFrames) ([]int8, []int8, error) {
 	return metadata, payload, nil
 }
 
+func EqualizeToneFrames(cfg Config, frames ToneFrames) (ToneFrames, error) {
+	plan, err := BuildTonePlan(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if len(frames) != len(plan) {
+		return nil, fmt.Errorf("got %d tone frames, want %d", len(frames), len(plan))
+	}
+
+	out := make(ToneFrames, len(frames))
+	seed := NewMLS(MLS1Poly, 0)
+	for frameIdx, symbolPlan := range plan {
+		if len(frames[frameIdx]) != ToneCount {
+			return nil, fmt.Errorf("frame %d has %d tones, want %d", frameIdx, len(frames[frameIdx]), ToneCount)
+		}
+		estimates := make([]seedGainEstimate, 0, SeedTones)
+		for _, tone := range symbolPlan.Tones {
+			if tone.Kind != SeedTone {
+				continue
+			}
+			expected := complex(float64(NRZ(seed.NextBit())), 0)
+			gain := frames[frameIdx][tone.Index] * expected
+			if cmplx.Abs(gain) > 1e-12 {
+				estimates = append(estimates, seedGainEstimate{
+					tone: tone.Index,
+					gain: gain,
+				})
+			}
+		}
+
+		frame := make([]complex128, len(frames[frameIdx]))
+		copy(frame, frames[frameIdx])
+		for i := range frame {
+			gain, ok := nearestSeedGain(i, estimates)
+			if ok {
+				frame[i] /= gain
+			}
+		}
+		out[frameIdx] = frame
+	}
+	return out, nil
+}
+
+type seedGainEstimate struct {
+	tone int
+	gain complex128
+}
+
+func nearestSeedGain(tone int, estimates []seedGainEstimate) (complex128, bool) {
+	if len(estimates) == 0 {
+		return 0, false
+	}
+	best := estimates[0]
+	bestDistance := circularToneDistance(tone, best.tone)
+	for _, estimate := range estimates[1:] {
+		distance := circularToneDistance(tone, estimate.tone)
+		if distance < bestDistance {
+			best = estimate
+			bestDistance = distance
+		}
+	}
+	return best.gain, true
+}
+
+func circularToneDistance(a, b int) int {
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	if wrap := ToneCount - d; wrap < d {
+		return wrap
+	}
+	return d
+}
+
 func DecodeAligned(cfg AlignedDecoderConfig, samples []complex64) (Metadata, []byte, error) {
 	frames, err := AnalyzeComplexAligned(cfg, samples)
 	if err != nil {
@@ -117,7 +195,11 @@ func DecodeAligned(cfg AlignedDecoderConfig, samples []complex64) (Metadata, []b
 }
 
 func decodeFramesForMode(mode Mode, cfg Config, frames ToneFrames) (Metadata, []byte, error) {
-	metadataCode, payloadCode, err := DecodeToneFrames(cfg, frames)
+	equalized, err := EqualizeToneFrames(cfg, frames)
+	if err != nil {
+		return Metadata{}, nil, err
+	}
+	metadataCode, payloadCode, err := DecodeToneFrames(cfg, equalized)
 	if err != nil {
 		return Metadata{}, nil, err
 	}

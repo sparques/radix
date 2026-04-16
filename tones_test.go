@@ -98,3 +98,44 @@ func TestBuildToneFramesMapsMetadataAndPayload(t *testing.T) {
 	}
 	t.Fatal("no data tone found")
 }
+
+func TestDecodeToneFramesRoundTrip(t *testing.T) {
+	mode, err := NewMode(QPSK, RateHalf, ShortFrame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Setup(mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := EncodeCallSign("N0CALL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := EncodeMetadata(call, mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := EncodePayload(cfg, []byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames, err := BuildToneFrames(cfg, meta, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotMeta, gotPayload, err := DecodeToneFrames(cfg, frames)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range meta {
+		if gotMeta[i] != meta[i] {
+			t.Fatalf("meta[%d] = %d, want %d", i, gotMeta[i], meta[i])
+		}
+	}
+	for i := range payload {
+		if gotPayload[i] != payload[i] {
+			t.Fatalf("payload[%d] = %d, want %d", i, gotPayload[i], payload[i])
+		}
+	}
+}

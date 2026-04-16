@@ -103,3 +103,39 @@ func AnalyzeComplexAlignedFrom(r io.Reader, cfg AlignedDecoderConfig) (ToneFrame
 	}
 	return AnalyzeComplexAligned(cfg, samples)
 }
+
+func DecodeAlignedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, error) {
+	samples, err := ReadComplex64LE(r)
+	if err != nil {
+		return Metadata{}, nil, err
+	}
+	return DecodeAligned(cfg, samples)
+}
+
+func DecodeCapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, Acquisition, error) {
+	samples, err := ReadComplex64LE(r)
+	if err != nil {
+		return Metadata{}, nil, Acquisition{}, err
+	}
+	return DecodeCaptured(cfg, samples)
+}
+
+func DecodeInterleavedFloat32CapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, Acquisition, error) {
+	raw, err := ReadFloat32LE(r)
+	if err != nil {
+		return Metadata{}, nil, Acquisition{}, err
+	}
+	samples, err := InterleavedFloat32ToComplex(raw)
+	if err != nil {
+		return Metadata{}, nil, Acquisition{}, err
+	}
+	return DecodeCaptured(cfg, samples)
+}
+
+func DecodeMonoFloat32CapturedFrom(r io.Reader, cfg AlignedDecoderConfig) (Metadata, []byte, Acquisition, error) {
+	raw, err := ReadFloat32LE(r)
+	if err != nil {
+		return Metadata{}, nil, Acquisition{}, err
+	}
+	return DecodeCaptured(cfg, MonoFloat32ToComplex(raw))
+}

@@ -32,6 +32,31 @@ func TestEncodeMetadataShapeAndValues(t *testing.T) {
 	}
 }
 
+func TestDecodeMetadataRoundTrip(t *testing.T) {
+	mode, err := NewMode(QAM16, RateHalf, ShortFrame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := EncodeCallSign("ANONYMOUS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := EncodeMetadata(call, mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeMetadata(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CallSignValue != call {
+		t.Fatalf("call = %d, want %d", got.CallSignValue, call)
+	}
+	if got.Mode != mode {
+		t.Fatalf("mode = %d, want %d", got.Mode, mode)
+	}
+}
+
 func TestMetadataWordRejectsInvalidInputs(t *testing.T) {
 	if _, err := MetadataWord(0, 0); err == nil {
 		t.Fatal("MetadataWord accepted zero call sign")

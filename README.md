@@ -110,3 +110,56 @@ if err != nil {
 
 _ = frames
 ```
+
+For clean streams where symbol timing and mode are already known, aligned decode
+can recover metadata and the padded mode payload:
+
+```go
+metadata, payload, err := radix.DecodeAligned(radix.AlignedDecoderConfig{
+	Audio: radix.AudioConfig{
+		SampleRate:      48000,
+		FrequencyOffset: 1500,
+	},
+	Mode: mode,
+}, samples)
+if err != nil {
+	panic(err)
+}
+
+_, _ = metadata, payload
+```
+
+Captured receive can search an arbitrary complex sample buffer for the repeated
+Schmidl-Cox preamble, align to the first data symbol, and recover the metadata
+and padded payload. The mode is still supplied by the caller:
+
+```go
+metadata, payload, acquisition, err := radix.DecodeCaptured(radix.AlignedDecoderConfig{
+	Audio: radix.AudioConfig{
+		SampleRate:      48000,
+		FrequencyOffset: 1500,
+	},
+	Mode: mode,
+}, captured)
+if err != nil {
+	panic(err)
+}
+
+_, _, _ = metadata, payload, acquisition
+```
+
+Reader helpers are available for little-endian complex64, stereo float32 IQ, and
+mono float32 captures:
+
+```go
+metadata, payload, acquisition, err = radix.DecodeInterleavedFloat32CapturedFrom(reader, radix.AlignedDecoderConfig{
+	Audio: radix.AudioConfig{
+		SampleRate:      48000,
+		FrequencyOffset: 1500,
+	},
+	Mode: mode,
+})
+```
+
+Real captures still need more receiver work for difficult channels: carrier and
+sample-rate correction, channel estimation, and soft/noisy polar decoding.

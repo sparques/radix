@@ -50,3 +50,40 @@ func EncodePayload(cfg Config, payload []byte) ([]int8, error) {
 	}
 	return InterleaveEncode(code, cfg.CodeOrder)
 }
+
+func DecodePayload(cfg Config, code []int8) ([]byte, error) {
+	codeBits := 1 << cfg.CodeOrder
+	if len(code) != codeBits {
+		return nil, fmt.Errorf("payload code has %d symbols, want %d", len(code), codeBits)
+	}
+	if len(cfg.FrozenBits) == 0 {
+		return nil, fmt.Errorf("config has no frozen payload table")
+	}
+	deinterleaved, err := InterleaveDecode(code, cfg.CodeOrder)
+	if err != nil {
+		return nil, err
+	}
+	message, err := PolarDecodeHard(deinterleaved, cfg.FrozenBits, cfg.CodeOrder)
+	if err != nil {
+		return nil, err
+	}
+	if len(message) != cfg.DataBits+32 {
+		return nil, fmt.Errorf("payload polar message has %d symbols, want %d", len(message), cfg.DataBits+32)
+	}
+
+	crc := NewCRC32(0x8F6E37A0)
+	data := make([]byte, cfg.DataBytes)
+	for i := 0; i < cfg.DataBits; i++ {
+		bit := message[i] < 0
+		SetLEBit(data, i, bit)
+		crc.UpdateBit(bit)
+	}
+	for i := 0; i < 32; i++ {
+		crc.UpdateBit(message[cfg.DataBits+i] < 0)
+	}
+	if crc.Sum() != 0 {
+		return nil, fmt.Errorf("payload CRC mismatch")
+	}
+	ScramblePayload(data)
+	return data, nil
+}

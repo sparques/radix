@@ -44,6 +44,48 @@ func PolarEncode(message []int8, frozen []uint32, order int) ([]int8, error) {
 	return codeword, nil
 }
 
+func PolarDecodeHard(codeword []int8, frozen []uint32, order int) ([]int8, error) {
+	length := 1 << order
+	if len(codeword) != length {
+		return nil, fmt.Errorf("got %d codeword symbols, want %d", len(codeword), length)
+	}
+	if len(frozen)*32 < length {
+		return nil, fmt.Errorf("frozen table has %d bits, want %d", len(frozen)*32, length)
+	}
+
+	u := append([]int8(nil), codeword...)
+	polarTransform(u)
+	message := make([]int8, 0, countInformationBits(frozen, order))
+	for i, symbol := range u {
+		if frozenBit(frozen, i) {
+			continue
+		}
+		message = append(message, signInt8(symbol))
+	}
+	return message, nil
+}
+
+func polarTransform(symbols []int8) {
+	length := len(symbols)
+	for i := 0; i < length; i += 2 {
+		symbols[i] *= symbols[i+1]
+	}
+	for h := 2; h < length; h *= 2 {
+		for i := 0; i < length; i += 2 * h {
+			for j := i; j < i+h; j++ {
+				symbols[j] *= symbols[j+h]
+			}
+		}
+	}
+}
+
 func frozenBit(bits []uint32, idx int) bool {
 	return (bits[idx/32]>>(idx%32))&1 != 0
+}
+
+func signInt8(v int8) int8 {
+	if v < 0 {
+		return -1
+	}
+	return 1
 }

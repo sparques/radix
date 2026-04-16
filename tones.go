@@ -56,6 +56,85 @@ func BuildToneFrames(cfg Config, metadata []int8, payload []int8) (ToneFrames, e
 	return frames, nil
 }
 
+func DecodeToneFrames(cfg Config, frames ToneFrames) ([]int8, []int8, error) {
+	plan, err := BuildTonePlan(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(frames) != len(plan) {
+		return nil, nil, fmt.Errorf("got %d tone frames, want %d", len(frames), len(plan))
+	}
+
+	metadata := make([]int8, MetadataCodeBits)
+	payload := make([]int8, 1<<cfg.CodeOrder)
+	constellations := map[int]Constellation{}
+	for _, bits := range []int{1, 2, 3, 4, 6, 8, 10, 12} {
+		mod, err := modulationForBits(bits)
+		if err != nil {
+			return nil, nil, err
+		}
+		c, err := NewConstellation(mod)
+		if err != nil {
+			return nil, nil, err
+		}
+		constellations[bits] = c
+	}
+
+	for frameIdx, symbolPlan := range plan {
+		if len(frames[frameIdx]) != ToneCount {
+			return nil, nil, fmt.Errorf("frame %d has %d tones, want %d", frameIdx, len(frames[frameIdx]), ToneCount)
+		}
+		for _, tone := range symbolPlan.Tones {
+			symbol := frames[frameIdx][tone.Index]
+			switch tone.Kind {
+			case SeedTone:
+				continue
+			case MetaTone:
+				metadata[tone.BitOffset] = NearestSignedTone(symbol)
+			case DataTone:
+				bits := constellations[tone.Bits].Hard(symbol)
+				for i, bit := range bits {
+					payload[tone.BitOffset+i] = int8(bit)
+				}
+			default:
+				return nil, nil, fmt.Errorf("unsupported tone kind %s", tone.Kind)
+			}
+		}
+	}
+	return metadata, payload, nil
+}
+
+func DecodeAligned(cfg AlignedDecoderConfig, samples []complex64) (Metadata, []byte, error) {
+	frames, err := AnalyzeComplexAligned(cfg, samples)
+	if err != nil {
+		return Metadata{}, nil, err
+	}
+	modeCfg, err := Setup(cfg.Mode)
+	if err != nil {
+		return Metadata{}, nil, err
+	}
+	return decodeFramesForMode(cfg.Mode, modeCfg, frames)
+}
+
+func decodeFramesForMode(mode Mode, cfg Config, frames ToneFrames) (Metadata, []byte, error) {
+	metadataCode, payloadCode, err := DecodeToneFrames(cfg, frames)
+	if err != nil {
+		return Metadata{}, nil, err
+	}
+	metadata, err := DecodeMetadata(metadataCode)
+	if err != nil {
+		return Metadata{}, nil, err
+	}
+	if metadata.Mode != mode {
+		return Metadata{}, nil, fmt.Errorf("metadata mode %d does not match decoder mode %d", metadata.Mode, mode)
+	}
+	payload, err := DecodePayload(cfg, payloadCode)
+	if err != nil {
+		return Metadata{}, nil, err
+	}
+	return metadata, payload, nil
+}
+
 func int8BitsToFloat64(bits []int8) []float64 {
 	out := make([]float64, len(bits))
 	for i, bit := range bits {

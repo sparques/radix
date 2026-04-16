@@ -64,6 +64,34 @@ func TestEncodePayloadShape(t *testing.T) {
 	}
 }
 
+func TestDecodePayloadRoundTrip(t *testing.T) {
+	mode, err := NewMode(QPSK, RateHalf, ShortFrame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Setup(mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []byte("hello")
+	code, err := EncodePayload(cfg, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodePayload(cfg, code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got[:len(want)]) != string(want) {
+		t.Fatalf("payload prefix = %q, want %q", got[:len(want)], want)
+	}
+	for i, b := range got[len(want):] {
+		if b != 0 {
+			t.Fatalf("padding byte %d = %#x, want 0", i, b)
+		}
+	}
+}
+
 func TestEncodePayloadRejectsOversizedData(t *testing.T) {
 	mode, err := NewMode(BPSK, RateHalf, ShortFrame)
 	if err != nil {
